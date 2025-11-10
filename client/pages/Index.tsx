@@ -16,13 +16,26 @@ export default function Index() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [key, setKey] = useState("");
   const [user, setUser] = useState<User | null>(null);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [adminName, setAdminName] = useState("");
+  const [adminPass, setAdminPass] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "F1") {
+        e.preventDefault();
+        setShowAdmin(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const title = useMemo(() => (mode === "login" ? "Se connecter" : "Créer un compte"), [mode]);
@@ -36,41 +49,28 @@ export default function Index() {
         navigate("/dashboard");
       } else {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
-        try { await sendEmailVerification(cred.user); } catch {}
+        try {
+          await sendEmailVerification(cred.user);
+        } catch {}
         toast.success("Compte créé. Vérifiez votre email.");
       }
     } catch (err: any) {
-      toast.error(err?.message || "Erreur d'authentification");
+      const msg = (err?.code === "auth/network-request-failed")
+        ? "Réseau bloqué. Autorisez *.googleapis.com et *.firebaseapp.com ou réessayez."
+        : err?.message || "Erreur d'authentification";
+      toast.error(msg);
     }
   }
 
-  async function activateKey(e: React.FormEvent) {
+  function tryAdmin(e: React.FormEvent) {
     e.preventDefault();
-    if (!user) return toast.error("Connectez-vous d'abord");
-    const token = await user.getIdToken();
-    const res = await fetch("/api/license/activate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ key }),
-    });
-    if (res.ok) {
-      toast.success("Licence activée");
-      setKey("");
+    if (adminName === "Admin" && adminPass === "Antoine80@") {
+      setShowAdmin(false);
+      setAdminName("");
+      setAdminPass("");
+      navigate("/admin");
     } else {
-      const data = await res.json().catch(() => ({}));
-      toast.error(data?.error || "Activation échouée");
-    }
-  }
-
-  async function startLinkRoblox() {
-    if (!user) return toast.error("Connectez-vous d'abord");
-    const token = await user.getIdToken();
-    const res = await fetch("/api/roblox/link/start", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
-    if (res.ok) {
-      toast.success(`Code de liaison: ${data.code}`);
-    } else {
-      toast.error(data?.error || "Impossible de générer le code");
+      toast.error("Identifiants admin invalides");
     }
   }
 
@@ -94,30 +94,12 @@ export default function Index() {
         </div>
       </header>
 
-      <main className="container grid lg:grid-cols-2 gap-10 py-12">
-        <section className="flex flex-col justify-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-accent/30 px-3 py-1 text-xs text-primary mb-6">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"/> AntiCheat + Licences + Roblox Link
+      <main className="container min-h-[calc(100vh-72px-80px)] grid place-items-center py-12">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-6">
+            <h1 className="text-4xl font-extrabold leading-tight">Bienvenue sur <span className="text-primary">RShield</span></h1>
+            <p className="mt-2 text-muted-foreground">AntiCheat + Licences + Roblox Link</p>
           </div>
-          <h1 className="text-4xl md:text-6xl font-extrabold leading-tight">
-            Sécurisez vos serveurs Roblox avec <span className="text-primary">RShield</span>
-          </h1>
-          <p className="mt-4 text-muted-foreground max-w-xl">
-            Authentification Firebase, vérification de licence, console de commandes, bans, logs en temps réel et intégration Roblox clé-en-main.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <Link to={user ? "/dashboard" : "#auth"} className="px-5 py-2.5 rounded-lg bg-primary text-black font-semibold shadow-[0_0_30px_rgba(14,165,255,0.35)] hover:shadow-[0_0_40px_rgba(14,165,255,0.55)] transition">{user ? "Ouvrir le Dashboard" : "Commencer"}</Link>
-            <a href="https://discord.gg/" className="px-5 py-2.5 rounded-lg border border-border hover:border-primary/60 transition">Pas de clé ? Contact Discord</a>
-          </div>
-          <ul className="mt-8 text-sm text-muted-foreground grid grid-cols-2 gap-2 max-w-lg">
-            <li>• Licences et partage via lien + mot de passe</li>
-            <li>• Bans temporaires et permanents</li>
-            <li>• Console commandes globale</li>
-            <li>• Roblox account linking par code</li>
-          </ul>
-        </section>
-
-        <section id="auth" className="">
           <div className="bg-card/80 backdrop-blur rounded-2xl border border-border/60 p-6 shadow-2xl">
             <div className="flex gap-1 mb-6">
               <button onClick={() => setMode("login")} className={cn("flex-1 py-2 rounded-md", mode === "login" ? "bg-primary text-black" : "bg-muted hover:bg-accent")}>Login</button>
@@ -135,22 +117,40 @@ export default function Index() {
               <button type="submit" className="w-full py-2 rounded-md bg-primary text-black font-semibold">{title}</button>
             </form>
             <div className="my-6 h-px bg-border" />
-            <form onSubmit={activateKey} className="space-y-3">
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <label className="text-sm">Activer une clé</label>
-                  <input value={key} onChange={(e)=>setKey(e.target.value)} placeholder="ABCD-XXXX-YYYY" className="mt-1 w-full rounded-md bg-background border border-border px-3 py-2 outline-none focus:ring-2 focus:ring-primary" />
-                </div>
-                <button className="px-4 py-2 rounded-md bg-secondary text-black font-semibold">Activer</button>
-              </div>
-            </form>
-            <div className="mt-4 flex items-center justify-between text-sm">
-              <button onClick={startLinkRoblox} className="underline decoration-primary decoration-2 underline-offset-4 hover:text-primary">Lier mon compte Roblox</button>
-              {user ? <span className="text-muted-foreground">Connecté: {user.email}</span> : null}
+            <div className="flex items-center justify-between text-sm">
+              <Link to="/activate" className="underline decoration-primary decoration-2 underline-offset-4 hover:text-primary">Activer une clé</Link>
+              <button onClick={() => setShowAdmin(true)} className="text-muted-foreground hover:text-primary">Admin</button>
             </div>
           </div>
-        </section>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link to={user ? "/dashboard" : "/#"} className="px-5 py-2.5 rounded-lg bg-primary text-black font-semibold shadow-[0_0_30px_rgba(14,165,255,0.35)] hover:shadow-[0_0_40px_rgba(14,165,255,0.55)] transition">{user ? "Ouvrir le Dashboard" : "Commencer"}</Link>
+            <a href="https://discord.gg/" className="px-5 py-2.5 rounded-lg border border-border hover:border-primary/60 transition">Pas de clé ? Contact Discord</a>
+          </div>
+        </div>
       </main>
+
+      {showAdmin && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50">
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5">
+            <h2 className="text-lg font-semibold mb-3">Admin — Accès fondateur</h2>
+            <form onSubmit={tryAdmin} className="space-y-3">
+              <div>
+                <label className="text-sm">Nom</label>
+                <input value={adminName} onChange={e=>setAdminName(e.target.value)} className="mt-1 w-full rounded-md bg-background border border-border px-3 py-2 outline-none focus:ring-2 focus:ring-primary" placeholder="Admin" />
+              </div>
+              <div>
+                <label className="text-sm">Mot de passe</label>
+                <input type="password" value={adminPass} onChange={e=>setAdminPass(e.target.value)} className="mt-1 w-full rounded-md bg-background border border-border px-3 py-2 outline-none focus:ring-2 focus:ring-primary" placeholder="••••••••" />
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="flex-1 py-2 rounded-md bg-primary text-black font-semibold">Entrer</button>
+                <button type="button" onClick={()=>setShowAdmin(false)} className="px-3 py-2 rounded-md border border-border hover:bg-accent">Annuler</button>
+              </div>
+              <p className="text-xs text-muted-foreground">Raccourci: Ctrl + F1</p>
+            </form>
+          </div>
+        </div>
+      )}
 
       <footer className="border-t border-border/60 py-8">
         <div className="container text-sm text-muted-foreground flex items-center justify-between">
