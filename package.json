@@ -23,6 +23,9 @@
   "dependencies": {
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "firebase": "^12.5.0",
+    "firebase-admin": "^13.6.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
